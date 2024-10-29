@@ -74,10 +74,42 @@ async def upload_file(file: UploadFile = File(...), user_id: int = None):
         if not form_name or not fields:
             raise HTTPException(status_code=400, detail="JSON must contain 'formName' and 'fields'.")
 
-    elif file.filename.endswith('.xlsx'):
-        df = pd.read_excel(contents, engine='openpyxl')
-        form_name = file.filename  # Use the filename for form name if Excel
-        fields = df.to_dict(orient='records')  # Convert Excel to list of dictionaries
+        elif file.filename.endswith('.xlsx'):
+        #print("is excel file")
+
+        # df = pd.read_excel(io.BytesIO(contents), engine='openpyxl')
+        # form_name = file.filename  # Use the filename for form name if Excel
+        # fields = df.to_dict(orient='records')
+        # print("Fields from excel: ",fields)
+        try:
+            df = pd.read_excel(io.BytesIO(contents), engine='openpyxl')
+
+            # Clean up and transform the DataFrame
+            fields = []
+            for _, row in df.iterrows():
+                field_json = {
+                    "label": row.get("Label", "").strip(),
+                    "type": row.get("Type", "").strip(),
+                    "validation": {
+                        "required": row.get("Required", "").strip().lower() == 'yes'
+                    }
+                }
+
+                # Add options only if type is Dropdown or Multiple Choice
+                if field_json["type"] in ["Dropdown", "Multiple Choice"]:
+                    options = row.get("Option", "")
+                    field_json["options"] = [option.strip() for option in options.split(",") if option.strip()]
+
+                # Exclude empty fields
+                if field_json["type"] in ["Text", "Checkbox"]:
+                    field_json.pop("options", None)  # Remove options if type is Text or Checkbox
+
+                fields.append(field_json)
+
+
+
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=f"Error parsing Excel file: {e}")
 
     # Generate a unique form_id using NanoID
     form_id = generate(size=10)  # 10-character NanoID
