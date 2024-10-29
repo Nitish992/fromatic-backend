@@ -230,6 +230,40 @@ async def get_user_id(clerk_user_id: str):
             raise HTTPException(status_code=404, detail="User not found.")
     finally:
         db.close()
+
+
+@app.get("/export/{form_id}")
+async def export_responses(form_id: int, db: Session = Depends(get_db)):
+    # Query responses for the specified form_id from the SQLAlchemy model
+    responses = db.query(Response).filter(Response.form_id == form_id).all()
+
+    if not responses:
+        raise HTTPException(status_code=404, detail="No responses found for this form.")
+
+    # Create a list to hold response data
+    response_data = []
+
+    for response in responses:
+        # Assuming 'data' is a JSON field, access it directly
+        answers = response.data  # This is already a dictionary if defined as JSON
+        # Flatten the dictionary into a row for the DataFrame
+        response_data.append(answers)
+
+    # Create a DataFrame from the response data
+    df = pd.DataFrame(response_data)
+
+    # Create a BytesIO buffer to save the Excel file
+    output = BytesIO()
+    with pd.ExcelWriter(output, engine='openpyxl') as writer:
+        df.to_excel(writer, index=False, sheet_name='Responses')
+
+    output.seek(0)  # Rewind the buffer
+
+    return StreamingResponse(
+        output,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f"attachment; filename={form_id}_responses.xlsx"}
+    )
 # from fastapi import FastAPI, UploadFile, File, HTTPException, Depends
 # from fastapi.responses import JSONResponse
 # import pandas as pd
